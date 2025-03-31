@@ -4,8 +4,19 @@ from database import SessionLocal, engine, Base
 from models import  Ingredient, Recipe
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, select
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+import os
 
 app = FastAPI()
+# 挂载前端静态文件
+app.mount("/frontend", StaticFiles(directory="../frontend"), name="frontend")
+app.mount("/images", StaticFiles(directory="../frontend/Food Images"), name="images")
+
+# 访问 / 时返回 index.html 页面
+@app.get("/")
+def read_index():
+    return FileResponse(os.path.join("../frontend", "index.html"))
 
 app.add_middleware(
     CORSMiddleware,
@@ -59,46 +70,79 @@ def search_recipes(
     ingredient: str, 
     db: Session = Depends(get_db), 
     skip: int = 0, 
-    limit: int = 10
+    limit: int = 20
 ):
-
+    print(f"Search ingredients: {ingredient}")
     ingredients = [i.strip().lower() for i in ingredient.split(",") if i.strip()]
+    print(f"Processed ingredient list: {ingredients}")
+
+    if not ingredients:
+        raise HTTPException(
+            status_code=400, 
+            detail="At least one ingredient must be provided"
+        )
     
-    # 基础查询
-    query = db.query(Recipe).join(Recipe.ingredients)
-    
-    # 添加每个食材的过滤条件
-    for ing in ingredients:
-        query = query.filter(
-            Recipe.ingredients.any(
+    try:
+        # Base query
+        query = db.query(Recipe).distinct()
+        
+        # For each ingredient, use OR conditions instead of AND conditions
+        # Match any ingredient instead of requiring all
+        if len(ingredients) == 1:
+            # Single ingredient case: direct fuzzy matching
+            ing = ingredients[0]
+            query = query.join(Recipe.ingredients).filter(
                 func.lower(Ingredient.name).like(f"%{ing}%")
             )
-        )
-    
-    # 获取结果
-    total = query.group_by(Recipe.id).count()
-    recipes = query.group_by(Recipe.id).order_by(
-        func.count(Ingredient.id).desc()
-    ).offset(skip).limit(limit).all()
-    
-    if not recipes:
+        else:
+            # Multiple ingredients case: match any and sort by relevance
+            from sqlalchemy import or_
+            
+            # Create a filter condition to find recipes containing any provided ingredient
+            ingredient_conditions = [
+                Recipe.ingredients.any(
+                    func.lower(Ingredient.name).like(f"%{ing}%")
+                ) for ing in ingredients
+            ]
+            
+            query = query.filter(or_(*ingredient_conditions))
+        
+        # Get total count
+        total = query.count()
+        print(f"Total recipes found: {total}")
+        
+        if total == 0:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"No recipes found containing these ingredients: {ingredient}"
+            )
+        
+        # Get results sorted by the number of matching ingredients
+        recipes = query.order_by(Recipe.id).offset(skip).limit(limit).all()
+        
+        # Return complete recipe information
+        return {
+            "total": total,
+            "items": [{
+                "id": recipe.id,
+                "title": recipe.title,                   
+                "ingredients_text": recipe.ingredients_text, 
+                "instructions": recipe.instructions,       
+                "image_name": recipe.image_name,         
+                "cleaned_ingredients": [ing.name for ing in recipe.ingredients]  
+            } for recipe in recipes]
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Catch and log any other exceptions
+        print(f"Search error: {str(e)}")
         raise HTTPException(
-            status_code=404, 
-            detail=f"No recipes found for ingredients: {ingredient}"
+            status_code=500,
+            detail=f"Error processing search: {str(e)}"
         )
-    
-    # 返回完整的菜谱信息
-    return {
-        "total": total,
-        "items": [{
-            "id": recipe.id,
-            "title": recipe.title,                   
-            "ingredients_text": recipe.ingredients_text, 
-            "instructions": recipe.instructions,       
-            "image_name": recipe.image_name,         
-            "cleaned_ingredients": [ing.name for ing in recipe.ingredients]  
-        } for recipe in recipes]
-    }
+
+
 
 if __name__ == "__main__":
     import uvicorn
