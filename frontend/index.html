@@ -6,7 +6,7 @@
     <title>Intelligent Recipe Finder</title>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="/frontend/style.css">
 </head>
 <body>
     <div class="bg-image">
@@ -37,69 +37,20 @@
         </div>
     </div>
 
+    <div id="loading" class="hidden text-center py-8">
+        <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-800"></div>
+        <p class="mt-2 text-gray-600">Searching for recipes...</p>
+    </div>
+
     <div id="recipe-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
         <div class="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-8 relative">
             <div id="modal-content"></div>
         </div>
     </div>
 
-    <div id="recipe-list" class="hidden container mx-auto px-4 py-12"></div>
+    <div id="recipe-list" class="hidden container mx-auto px-4 py-12">
+    </div>
 
-    <script>
-        document.getElementById('ingredient-form').addEventListener('submit', async function(event) {
-            event.preventDefault();
-            const ingredients = document.getElementById('ingredients').value
-                .toLowerCase()
-                .replace(/[0-9]/g, '')
-                .replace(/[^a-z,]/g, ' ')
-                .split(',')
-                .map(i => i.trim())
-                .filter(i => i)
-                .join(',');
-
-            const recipeList = document.getElementById('recipe-list');
-            
-            try {
-                const response = await fetch(`http://127.0.0.1:8000/recipes/search?ingredient=${encodeURIComponent(ingredients)}`);
-                
-                if (!response.ok) {
-                    throw new Error(`No recipes found for these ingredients`);
-                }
-
-                const recipes = await response.json();
-
-                if (recipes.items.length === 0) {
-                    recipeList.innerHTML = `
-                        <div class="text-center text-gray-600 py-8">
-                            No recipes found for these ingredients. Try different combinations!
-                        </div>
-                    `;
-                } else {
-                    recipeList.innerHTML = recipes.items.map(recipe => `
-                        <div class="bg-white rounded-lg shadow-md p-6 mb-4">
-                            <h3 class="text-xl font-semibold mb-2">${recipe.name}</h3>
-                            <p class="text-gray-600 mb-4">${recipe.description}</p>
-                            <div class="flex flex-wrap gap-2">
-                                ${recipe.ingredients.map(ing => `
-                                    <span class="bg-gray-100 px-2 py-1 rounded-full text-sm">
-                                        ${ing.name}
-                                    </span>
-                                `).join('')}
-                            </div>
-                        </div>
-                    `).join('');
-                }
-
-                recipeList.classList.remove('hidden');
-            } catch (error) {
-                recipeList.innerHTML = `
-                    <div class="text-center text-red-600 py-8">
-                        ${error.message}
-                    </div>
-                `;
-                recipeList.classList.remove('hidden');
-            }
-        });
-    </script>
+    <script src="/frontend/script.js"></script>
 </body>
 </html>
